@@ -1,0 +1,38 @@
+{
+    "id" : "com.customdev.AMI",
+    "runtime" : "org.freedesktop.Platform",
+    "runtime-version" : "23.08",
+    "sdk" : "org.freedesktop.Sdk",
+    "command" : "ami",
+    "finish-args" : [],
+    "cleanup" : [
+        "/include",
+        "/lib/pkgconfig",
+        "/man",
+        "/share/doc",
+        "/share/gtk-doc",
+        "/share/man",
+        "/share/pkgconfig",
+        "*.la",
+        "*.a"
+    ],
+    "modules" : [
+        {
+            "name" : "ami",
+            "builddir" : true,
+            "buildsystem" : "meson",
+            "sources" : [
+                {
+                    "type" : "git",
+                    "url" : "file:///home/mats/Projects"
+                }
+            ],
+            "config-opts" : [
+                "--libdir=lib"
+            ]
+        }
+    ],
+    "build-options" : {
+        "env" : {        }
+    }
+}
