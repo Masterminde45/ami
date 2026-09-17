@@ -45,8 +45,13 @@ resolve_version() {
         printf '%s' "$AMI_VERSION"
         return
     fi
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+    # Capture the full response before grep/sed touch it -- piping curl
+    # straight into `grep -m1` lets grep close the pipe as soon as it finds
+    # a match, which sends curl a SIGPIPE and makes it print a spurious
+    # "Failure writing output" error even though the result is still correct.
+    local api_response
+    api_response="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")"
+    printf '%s' "$api_response" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
 }
 
 # --- Method 1: Homebrew / Linuxbrew --------------------------------------
