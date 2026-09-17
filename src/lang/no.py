@@ -1,0 +1,57 @@
+# no.py -- Norske strenger for ami
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Slik legger du til et nytt språk: kopier en fil i denne mappen (f.eks.
+# en.py) til <din-2-bokstavs-kode>.py, oversett kun teksten etter hver ':'
+# under, og la alle dict-nøkler og {plassholdere} stå urørt. Lagre filen her,
+# så finner ami den automatisk neste gang -- ingen ombygging nødvendig.
+
+STRINGS = {
+    "clean_start": "--- Starter Systemopprydding (AMI Clean) ---",
+    "lockfile_found": "Fant Pacman-låsefil: {path}. Sletter...",
+    "lockfile_removed": "Låsefil slettet.",
+    "lockfile_removed_continue": "Låsefil slettet. Fortsetter.",
+    "lockfile_remove_failed": "Advarsel: Klarte ikke å slette låsefilen.",
+    "lockfile_remove_failed_continue": "Advarsel: Klarte ikke å slette låsefilen. Fortsetter.",
+    "orphans_step": "\n[1/2] Fjerner foreldreløse pakker...",
+    "orphans_found": "Fant {count} foreldreløse pakke(r). Fjerner...",
+    "orphans_removed": "Fjerning av foreldreløse pakker fullført.",
+    "orphans_none": "Ingen foreldreløse pakker funnet.",
+    "orphans_error": "FEIL under fjerning av foreldreløse pakker: {error}",
+    "cache_step": "\n[2/2] Rydder opp i Pacman Cache (/var/cache/pacman/pkg)...",
+    "cache_done": "Pacman Cache-opprydding fullført. Eldre pakker er slettet.",
+    "paccache_missing": "FEIL: '{path}' ble ikke funnet. Dette verktøyet er del av 'pacman-contrib'.",
+    "paccache_missing_hint": "Vennligst installer pakken manuelt: 'sudo pacman -S pacman-contrib'",
+    "cache_error": "FEIL under Cache-opprydding: {error}",
+    "clean_done": "\nOpprydding fullført!",
+    "sync_start": "Synkroniserer Pacman-databasen...",
+    "sync_done": "Synkronisering fullført.",
+    "sync_failed": "Advarsel: Klarte ikke å synkronisere Pacman-databasen. Fortsetter med installasjon...",
+    "pacman_search": "Sjekker offisielle repos for '{pkg}'...",
+    "pacman_missing": "FATAL FEIL: '{path}' kommandoen ble ikke funnet i det hele tatt.",
+    "pacman_found_installing": "Fant '{pkg}' i offisielle Pacman-repositorier. Installerer via Pacman...",
+    "pacman_success": "SUKSESS! '{pkg}' er installert via Pacman.",
+    "pacman_install_failed": "FEIL under Pacman-installasjon. Sjekk om systemet er oppdatert. {error}",
+    "aur_lookup": "Slår opp '{pkg}' i AUR...",
+    "aur_timeout": "Tidsavbrudd ({timeout}s) ved henting av AUR-info. Sjekk nettverk/tunnel.",
+    "aur_network_error": "Nettverksfeil ved henting av AUR-info: {error}",
+    "not_found_anywhere": "Feil: Finner verken Pacman- eller AUR-informasjon for '{pkg}'. Avbryter.",
+    "aur_found_building": "Fant '{pkg}' i AUR. Starter bygging fra kildekode...",
+    "retry_attempt": "\n--- Gjør nytt forsøk på installasjon ({attempt}/{attempts}) ---",
+    "retry_failed_final": "Installasjonen feilet etter {attempts} forsøk. Build-mappen '{pkg}' er beholdt (IKKE slettet) for feilsøking.",
+    "clone_start": "Kloner {url}...",
+    "clone_done": "Kloning fullført.",
+    "dir_exists_updating": "Mappen '{pkg}' finnes. Oppdaterer fra Git...",
+    "patch_applying": "Bruker {count} kjent(e) patch(er) for '{pkg}'...",
+    "patch_warning": "  ADVARSEL: patch '{desc}' feilet: {error}",
+    "conflict_removing": "  [patch] Fjerner konfliktpakke: {pkg}",
+    "build_start": "Starter bygging av {pkg}...",
+    "build_success": "SUKSESS! '{pkg}' er installert.",
+    "banner_title": "--- AMI (Archlinux Multi Installer) ---",
+    "banner_usage_install": "Bruk: ami <pakkenavn> (for å installere)",
+    "banner_usage_clean": "Bruk: ami clean (for å rydde opp systemet)",
+    "missing_pkgname": "FEIL: Mangler pakkenavn. Bruk: ami install <pakkenavn>",
+    "patch_yay_conflict": "Fjern yay/yay-debug-konflikt",
+    "patch_rustdesk_conflict": "Løs geocode-glib-common sammenslåingskonflikt",
+}

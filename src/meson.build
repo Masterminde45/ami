@@ -17,7 +17,15 @@ configure_file(
 
 ami_sources = [
     '__init__.py',
-    'main.py'
+    'main.py',
+    'i18n.py'
 ]
 
 install_data(ami_sources, install_dir: moduledir)
+
+lang_sources = [
+    'lang/en.py',
+    'lang/no.py'
+]
+
+install_data(lang_sources, install_dir: moduledir / 'lang')

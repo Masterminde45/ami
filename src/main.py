@@ -22,23 +22,31 @@ import json
 import subprocess
 import os
 
+try:
+    from . import i18n
+except ImportError:
+    import i18n
+
+t = i18n.t
+
 AUR_BASE_URL = "https://aur.archlinux.org/rpc/"
 PACMAN_PATH = "/usr/bin/pacman"
 PACCACHE_PATH = "/usr/bin/paccache"
 
-# Nettverks-timeout (sekunder) for ALLE HTTP-kall mot AUR. Uten dette ville
-# requests.get() henge i det uendelige hvis nettet/tunnelen er treg -> dette var
-# årsaken til at AMI "hang etter synkronisering".
+# Network timeout (seconds) for ALL HTTP calls to the AUR. Without this,
+# requests.get() would hang forever if the network/tunnel is slow -- this was
+# the cause of AMI "hanging after sync".
 AUR_TIMEOUT = 15
 
-# --- Patch-system (universelt) -------------------------------------------------
-# AMI er en GENERELL installer. Noen pakker har kjente installasjonsproblemer i
-# sin egen AUR-/byggprosess. Slike fikser legges inn her som "patcher" og kjøres
-# KUN for den aktuelle pakken (aldri for andre). En patch er en funksjon som tar
-# byggekatalogen som argument og kjøres ETTER kloning, FØR makepkg.
+# --- Patch system (universal) ---------------------------------------------
+# AMI is a GENERAL installer. Some packages have known install problems in
+# their own AUR/build process. Such fixes go here as "patches" and only run
+# for that specific package (never for others). A patch is a function that
+# takes the build directory as an argument and runs AFTER cloning, BEFORE
+# makepkg.
 
 def _remove_conflicts(*packages):
-    """Lager en patch som fjerner installerte konfliktpakker før bygging."""
+    """Builds a patch that removes installed conflicting packages before building."""
     def _patch(build_dir):
         for pkg in packages:
             installed = subprocess.run(
@@ -46,48 +54,47 @@ def _remove_conflicts(*packages):
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             ).returncode == 0
             if installed:
-                print(f"  [patch] Fjerner konfliktpakke: {pkg}")
+                print(t("conflict_removing", pkg=pkg))
                 subprocess.run(["sudo", PACMAN_PATH, "-Rdd", "--noconfirm", pkg],
                                check=False)
     return _patch
 
-# Register: pakkenavn -> liste av (beskrivelse, patch-funksjon).
-# Legg nye kjente-problem-fikser her. De trigges bare for navnet de står under.
+# Registry: package name -> list of (description key, patch function).
+# Add new known-issue fixes here. They only trigger for the name they're under.
 PATCHES = {
-    # yay-git kolliderer med en eksisterende yay-installasjon.
+    # yay-git conflicts with an existing yay install.
     "yay-git": [
-        ("Fjern yay/yay-debug-konflikt", _remove_conflicts("yay", "yay-debug")),
+        ("patch_yay_conflict", _remove_conflicts("yay", "yay-debug")),
     ],
-    # Kildebygd rustdesk: ny geocode-glib slår sammen geocode-glib-common,
-    # makepkg stopper på "unresolvable package conflicts" med --noconfirm.
+    # Source-built rustdesk: a newer geocode-glib merges geocode-glib-common,
+    # makepkg stops on "unresolvable package conflicts" with --noconfirm.
     "rustdesk": [
-        ("Løs geocode-glib-common sammenslåingskonflikt",
-         _remove_conflicts("geocode-glib-common")),
+        ("patch_rustdesk_conflict", _remove_conflicts("geocode-glib-common")),
     ],
 }
 
 def apply_patches(pkgname, build_dir):
-    """Kjør kun patchene som gjelder for denne pakken (om noen)."""
+    """Runs only the patches that apply to this package (if any)."""
     patches = PATCHES.get(pkgname, [])
     if not patches:
         return
-    print(f"Bruker {len(patches)} kjent(e) patch(er) for '{pkgname}'...")
-    for desc, fn in patches:
-        print(f"  -> {desc}")
+    print(t("patch_applying", count=len(patches), pkg=pkgname))
+    for desc_key, fn in patches:
+        print(f"  -> {t(desc_key)}")
         try:
             fn(build_dir)
         except Exception as e:
-            print(f"  ADVARSEL: patch '{desc}' feilet: {e}")
+            print(t("patch_warning", desc=t(desc_key), error=e))
 
-# --- Hjelpefunksjoner ---
+# --- Helper functions ---
 
 def search_pacman_repos(pkgname):
-    """Sjekker om pakken finnes i offisielle Pacman-repositorier.
+    """Checks if the package exists in the official Pacman repos.
 
-    Bruker '-Si' (ren spørring mot synk-databasen) i stedet for transaksjons-
-    flagg som -Sp. Det starter ingen installasjon og kan ikke henge.
+    Uses '-Si' (a plain query against the sync database) instead of a
+    transaction flag like -Sp. It starts no install and cannot hang.
     """
-    print(f"Sjekker offisielle repos for '{pkgname}'...")
+    print(t("pacman_search", pkg=pkgname))
     try:
         result = subprocess.run(
             [PACMAN_PATH, "-Si", pkgname],
@@ -95,13 +102,13 @@ def search_pacman_repos(pkgname):
         )
         return result.returncode == 0
     except FileNotFoundError:
-        print(f"FATAL FEIL: '{PACMAN_PATH}' kommandoen ble ikke funnet i det hele tatt.")
+        print(t("pacman_missing", path=PACMAN_PATH))
         return False
 
 def get_package_info(pkgname):
-    """Henter detaljert info om en pakke fra AUR."""
+    """Fetches detailed info about a package from the AUR."""
     url = f"{AUR_BASE_URL}?v=5&type=info&arg[]={pkgname}"
-    print(f"Slår opp '{pkgname}' i AUR...")
+    print(t("aur_lookup", pkg=pkgname))
     try:
         response = requests.get(url, timeout=AUR_TIMEOUT)
         response.raise_for_status()
@@ -110,146 +117,144 @@ def get_package_info(pkgname):
             return data['results'][0]
         return None
     except requests.exceptions.Timeout:
-        print(f"Tidsavbrudd ({AUR_TIMEOUT}s) ved henting av AUR-info. "
-              "Sjekk nettverk/tunnel.")
+        print(t("aur_timeout", timeout=AUR_TIMEOUT))
         return None
     except requests.exceptions.RequestException as e:
-        print(f"Nettverksfeil ved henting av AUR-info: {e}")
+        print(t("aur_network_error", error=e))
         return None
 
 def clean_up_and_retry(pkgname, attempts=2):
-    """Prøver installasjon på nytt uten å slette build-mappen.
+    """Retries the install without deleting the build directory.
 
-    Git-repoet (og evt. lokale PKGBUILD-endringer) bevares. Bruker makepkg sin
-    egen --cleanbuild for å fjerne et evt. korrupt delvis bygd srcdir, i stedet
-    for å slette hele mappen (den forrige versjonen gjorde 'sudo rm -rf' på
-    hvert forsøk, som forårsaket et reelt tap av bygg-fremdrift ved en tidligere
-    OOM-hendelse).
+    The git repo (and any local PKGBUILD edits) are preserved. Uses
+    makepkg's own --cleanbuild to clear a corrupted/partial srcdir, instead
+    of deleting the whole directory (the previous version did 'sudo rm -rf'
+    on every attempt, which caused a real loss of build progress during a
+    past OOM incident).
     """
     for attempt in range(1, attempts + 1):
-        print(f"\n--- Gjør nytt forsøk på installasjon ({attempt}/{attempts}) ---")
+        print(t("retry_attempt", attempt=attempt, attempts=attempts))
         try:
             install_aur_only(pkgname, clean_build=True)
             return True
         except subprocess.CalledProcessError:
             if attempt == attempts:
-                print(f"Installasjonen feilet etter {attempts} forsøk. "
-                      f"Build-mappen '{pkgname}' er beholdt (IKKE slettet) for feilsøking.")
+                print(t("retry_failed_final", attempts=attempts, pkg=pkgname))
                 return False
 
     return False
 
 def install_aur_only(pkgname, clean_build=False):
-    """Utfører kun AUR-kloning og makepkg. Kaster feil hvis det feiler."""
+    """Performs only the AUR clone and makepkg. Raises if it fails."""
 
     repo_url = f"https://aur.archlinux.org/{pkgname}.git"
 
     if not os.path.exists(pkgname):
-        print(f"Kloner {repo_url}...")
+        print(t("clone_start", url=repo_url))
         subprocess.run(["git", "clone", repo_url], check=True)
-        print("Kloning fullført.")
+        print(t("clone_done"))
     else:
-        print(f"Mappen '{pkgname}' finnes. Oppdaterer fra Git...")
+        print(t("dir_exists_updating", pkg=pkgname))
         subprocess.run(["git", "pull"], cwd=pkgname, check=True, stdout=subprocess.DEVNULL)
 
-    # Kjør kun patcher som gjelder denne pakken (universelt patch-system).
+    # Only run the patches that apply to this package (universal patch system).
     apply_patches(pkgname, pkgname)
 
-    print(f"Starter bygging av {pkgname}...")
+    print(t("build_start", pkg=pkgname))
     makepkg_cmd = ["makepkg", "-si", "--noconfirm"]
     if clean_build:
         makepkg_cmd.append("--cleanbuild")
     subprocess.run(makepkg_cmd, cwd=pkgname, check=True)
-    print(f"SUKSESS! '{pkgname}' er installert.")
+    print(t("build_success", pkg=pkgname))
 
-# --- System Oppryddingsfunksjon ---
+# --- System cleanup function ---
 
 def clean_system():
-    """Rydder opp i Pacman cache og fjerner foreldreløse pakker."""
-    print("--- Starter Systemopprydding (AMI Clean) ---")
+    """Cleans up the Pacman cache and removes orphan packages."""
+    print(t("clean_start"))
 
-    # 1. RENSE LÅS
+    # 1. CLEAR LOCK
     lock_file = "/var/lib/pacman/db.lck"
     if os.path.exists(lock_file):
-        print(f"Fant Pacman-låsefil: {lock_file}. Sletter...")
+        print(t("lockfile_found", path=lock_file))
         try:
             subprocess.run(["sudo", "rm", "-f", lock_file], check=True)
-            print("Låsefil slettet.")
+            print(t("lockfile_removed"))
         except subprocess.CalledProcessError:
-            print("Advarsel: Klarte ikke å slette låsefilen.")
+            print(t("lockfile_remove_failed"))
 
-    # 2. Fjern foreldreløse pakker
-    print("\n[1/2] Fjerner foreldreløse pakker...")
+    # 2. Remove orphan packages
+    print(t("orphans_step"))
     try:
         orphans = subprocess.run([PACMAN_PATH, "-Qtdq"], capture_output=True, text=True, check=False)
         orphan_names = orphans.stdout.split()
         if orphan_names:
-            print(f"Fant {len(orphan_names)} foreldreløse pakke(r). Fjerner...")
+            print(t("orphans_found", count=len(orphan_names)))
             subprocess.run(["sudo", PACMAN_PATH, "-Rns", "--noconfirm", *orphan_names],
                             check=True, capture_output=True, text=True)
-            print("Fjerning av foreldreløse pakker fullført.")
+            print(t("orphans_removed"))
         else:
-            print("Ingen foreldreløse pakker funnet.")
+            print(t("orphans_none"))
     except subprocess.CalledProcessError as e:
-        print(f"FEIL under fjerning av foreldreløse pakker: {e.stderr}")
+        print(t("orphans_error", error=e.stderr))
 
-    # 3. Rydde opp i Pacman Cache
-    print("\n[2/2] Rydder opp i Pacman Cache (/var/cache/pacman/pkg)...")
+    # 3. Clean up the Pacman cache
+    print(t("cache_step"))
     try:
         subprocess.run([PACCACHE_PATH, "-r"], check=True)
-        print("Pacman Cache-opprydding fullført. Eldre pakker er slettet.")
+        print(t("cache_done"))
     except FileNotFoundError:
-        print(f"FEIL: '{PACCACHE_PATH}' ble ikke funnet. Dette verktøyet er del av 'pacman-contrib'.")
-        print("Vennligst installer pakken manuelt: 'sudo pacman -S pacman-contrib'")
+        print(t("paccache_missing", path=PACCACHE_PATH))
+        print(t("paccache_missing_hint"))
     except subprocess.CalledProcessError as e:
-        print(f"FEIL under Cache-opprydding: {e}")
+        print(t("cache_error", error=e))
 
-    print("\nOpprydding fullført!")
+    print(t("clean_done"))
 
-# --- Hovedfunksjon med Synkronisering ---
+# --- Main function with sync ---
 
 def install_package(pkgname):
-    """Sjekker Pacman, deretter AUR, og installerer pakken."""
+    """Checks Pacman, then the AUR, and installs the package."""
 
-    # 1. RENSE LÅS
+    # 1. CLEAR LOCK
     lock_file = "/var/lib/pacman/db.lck"
     if os.path.exists(lock_file):
-        print(f"Fant Pacman-låsefil: {lock_file}. Sletter...")
+        print(t("lockfile_found", path=lock_file))
         try:
             subprocess.run(["sudo", "rm", "-f", lock_file], check=True)
-            print("Låsefil slettet. Fortsetter.")
+            print(t("lockfile_removed_continue"))
         except subprocess.CalledProcessError:
-            print("Advarsel: Klarte ikke å slette låsefilen. Fortsetter.")
+            print(t("lockfile_remove_failed_continue"))
 
-    # 2. SYNKRONISERING
-    print("Synkroniserer Pacman-databasen...")
+    # 2. SYNC
+    print(t("sync_start"))
     try:
         subprocess.run(["sudo", PACMAN_PATH, "-Sy", "--noconfirm"], check=True, stdout=subprocess.DEVNULL)
-        print("Synkronisering fullført.")
+        print(t("sync_done"))
     except subprocess.CalledProcessError:
-        print("Advarsel: Klarte ikke å synkronisere Pacman-databasen. Fortsetter med installasjon...")
+        print(t("sync_failed"))
 
-    # Prioritet 1: Pacman
+    # Priority 1: Pacman
     if search_pacman_repos(pkgname):
-        print(f"Fant '{pkgname}' i offisielle Pacman-repositorier. Installerer via Pacman...")
+        print(t("pacman_found_installing", pkg=pkgname))
         try:
             subprocess.run(["sudo", PACMAN_PATH, "-S", "--noconfirm", pkgname], check=True)
-            print(f"SUKSESS! '{pkgname}' er installert via Pacman.")
+            print(t("pacman_success", pkg=pkgname))
             return
         except subprocess.CalledProcessError as e:
-            print(f"FEIL under Pacman-installasjon. Sjekk om systemet er oppdatert. {e}")
+            print(t("pacman_install_failed", error=e))
             return
 
-    # Prioritet 2: AUR
+    # Priority 2: AUR
     info = get_package_info(pkgname)
 
     if not info:
-        print(f"Feil: Finner verken Pacman- eller AUR-informasjon for '{pkgname}'. Avbryter.")
+        print(t("not_found_anywhere", pkg=pkgname))
         return
 
-    print(f"Fant '{pkgname}' i AUR. Starter bygging fra kildekode...")
+    print(t("aur_found_building", pkg=pkgname))
 
-    # Første forsøk på AUR-installasjon
+    # First AUR install attempt
     try:
         install_aur_only(pkgname)
     except subprocess.CalledProcessError:
@@ -257,7 +262,11 @@ def install_package(pkgname):
 
 
 def main(argv):
-    """Entrypoint kalt av 'ami'-wrapperen (src/ami.in) etter installasjon."""
+    """Entrypoint called by the 'ami' wrapper (src/ami.in) after install."""
+    notice = i18n.get_startup_notice()
+    if notice:
+        print(notice)
+
     if len(argv) > 1:
         command = argv[1]
 
@@ -268,14 +277,14 @@ def main(argv):
                 pkg_to_install = argv[2]
                 install_package(pkg_to_install)
             else:
-                print("FEIL: Mangler pakkenavn. Bruk: ami install <pakkenavn>")
+                print(t("missing_pkgname"))
         else:
             pkg_to_install = command
             install_package(pkg_to_install)
     else:
-        print("--- AMI (Archlinux Multi Installer) ---")
-        print("Bruk: ami <pakkenavn> (for å installere)")
-        print("Bruk: ami clean (for å rydde opp systemet)")
+        print(t("banner_title"))
+        print(t("banner_usage_install"))
+        print(t("banner_usage_clean"))
 
 
 if __name__ == "__main__":
