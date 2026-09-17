@@ -118,29 +118,28 @@ def get_package_info(pkgname):
         return None
 
 def clean_up_and_retry(pkgname, attempts=2):
-    """Prøver å reparere ved å rydde opp og forsøke AUR-installasjon på nytt."""
+    """Prøver installasjon på nytt uten å slette build-mappen.
+
+    Git-repoet (og evt. lokale PKGBUILD-endringer) bevares. Bruker makepkg sin
+    egen --cleanbuild for å fjerne et evt. korrupt delvis bygd srcdir, i stedet
+    for å slette hele mappen (den forrige versjonen gjorde 'sudo rm -rf' på
+    hvert forsøk, som forårsaket et reelt tap av bygg-fremdrift ved en tidligere
+    OOM-hendelse).
+    """
     for attempt in range(1, attempts + 1):
         print(f"\n--- Gjør nytt forsøk på installasjon ({attempt}/{attempts}) ---")
-
-        if os.path.exists(pkgname):
-            try:
-                print(f"Rydder opp i mappe '{pkgname}'...")
-                subprocess.run(["sudo", "rm", "-rf", pkgname], check=True)
-            except subprocess.CalledProcessError:
-                print("FEIL: Klarte ikke å slette mappen. Krever manuell sletting.")
-                return False
-
         try:
-            install_aur_only(pkgname)
+            install_aur_only(pkgname, clean_build=True)
             return True
         except subprocess.CalledProcessError:
             if attempt == attempts:
-                print(f"Installasjonen feilet etter {attempts} forsøk. Sjekk byggefeil manuelt.")
+                print(f"Installasjonen feilet etter {attempts} forsøk. "
+                      f"Build-mappen '{pkgname}' er beholdt (IKKE slettet) for feilsøking.")
                 return False
 
     return False
 
-def install_aur_only(pkgname):
+def install_aur_only(pkgname, clean_build=False):
     """Utfører kun AUR-kloning og makepkg. Kaster feil hvis det feiler."""
 
     repo_url = f"https://aur.archlinux.org/{pkgname}.git"
@@ -157,7 +156,10 @@ def install_aur_only(pkgname):
     apply_patches(pkgname, pkgname)
 
     print(f"Starter bygging av {pkgname}...")
-    subprocess.run(["makepkg", "-si", "--noconfirm"], cwd=pkgname, check=True)
+    makepkg_cmd = ["makepkg", "-si", "--noconfirm"]
+    if clean_build:
+        makepkg_cmd.append("--cleanbuild")
+    subprocess.run(makepkg_cmd, cwd=pkgname, check=True)
     print(f"SUKSESS! '{pkgname}' er installert.")
 
 # --- System Oppryddingsfunksjon ---
