@@ -180,9 +180,11 @@ def clean_system():
     print("\n[1/2] Fjerner foreldreløse pakker...")
     try:
         orphans = subprocess.run([PACMAN_PATH, "-Qtdq"], capture_output=True, text=True, check=False)
-        if orphans.stdout.strip():
-            print("Fant foreldreløse pakker. Fjerner...")
-            subprocess.run(["sudo", PACMAN_PATH, "-Rns", "--noconfirm"], input=orphans.stdout, text=True, check=True)
+        orphan_names = orphans.stdout.split()
+        if orphan_names:
+            print(f"Fant {len(orphan_names)} foreldreløse pakke(r). Fjerner...")
+            subprocess.run(["sudo", PACMAN_PATH, "-Rns", "--noconfirm", *orphan_names],
+                            check=True, capture_output=True, text=True)
             print("Fjerning av foreldreløse pakker fullført.")
         else:
             print("Ingen foreldreløse pakker funnet.")
