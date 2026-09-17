@@ -21,6 +21,9 @@ import requests
 import json
 import subprocess
 import os
+import difflib
+import hashlib
+from datetime import datetime, timezone
 
 try:
     from . import i18n
@@ -37,6 +40,11 @@ PACCACHE_PATH = "/usr/bin/paccache"
 # requests.get() would hang forever if the network/tunnel is slow -- this was
 # the cause of AMI "hanging after sync".
 AUR_TIMEOUT = 15
+
+
+class PkgbuildReviewDeclined(Exception):
+    """Raised when the user declines to build a package whose PKGBUILD changed."""
+
 
 # --- Patch system (universal) ---------------------------------------------
 # AMI is a GENERAL installer. Some packages have known install problems in
@@ -123,6 +131,61 @@ def get_package_info(pkgname):
         print(t("aur_network_error", error=e))
         return None
 
+def _pkgbuild_diff_confirmed(pkgname, old_content, new_content):
+    """Shows a PKGBUILD diff and asks for confirmation before building it.
+
+    Returns True if it's OK to proceed. Real AUR compromises have shipped as
+    ordinary-looking PKGBUILD edits (a maintainer account taken over, or a
+    malicious co-maintainer), so a changed PKGBUILD on an existing clone is
+    exactly the moment blind --noconfirm auto-building is riskiest. Set
+    AMI_AUTO_CONFIRM_PKGBUILD_CHANGES=1 to skip this prompt deliberately.
+    """
+    if old_content == new_content:
+        return True
+    if os.environ.get("AMI_AUTO_CONFIRM_PKGBUILD_CHANGES") == "1":
+        print(t("pkgbuild_changed_auto_confirmed", pkg=pkgname))
+        return True
+    print(t("pkgbuild_changed_header", pkg=pkgname))
+    diff = difflib.unified_diff(
+        old_content.splitlines(keepends=True),
+        new_content.splitlines(keepends=True),
+        fromfile="PKGBUILD (previous)",
+        tofile="PKGBUILD (new)",
+    )
+    sys.stdout.writelines(diff)
+    answer = input(t("pkgbuild_changed_prompt")).strip().lower()
+    return answer in ("y", "yes")
+
+def _log_build_checksums(pkgname, build_dir):
+    """Appends the sha256 of each package file this build produced to a
+    local audit log, so there's a durable record of exactly what was
+    installed and when -- useful after the fact even though there's no
+    external authority to compare an arbitrary AUR package's hash against
+    up front."""
+    try:
+        built_files = [f for f in os.listdir(build_dir)
+                       if f.endswith((".pkg.tar.zst", ".pkg.tar.xz"))]
+        if not built_files:
+            return
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=build_dir,
+            capture_output=True, text=True, check=False
+        ).stdout.strip() or "unknown"
+        log_dir = os.path.expanduser("~/.local/state/ami")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "build-log.txt")
+        with open(log_path, "a") as log:
+            for fname in built_files:
+                fpath = os.path.join(build_dir, fname)
+                with open(fpath, "rb") as f:
+                    digest = hashlib.sha256(f.read()).hexdigest()
+                timestamp = datetime.now(timezone.utc).isoformat()
+                log.write(f"{timestamp}  pkg={pkgname}  commit={commit}  "
+                          f"file={fname}  sha256={digest}\n")
+        print(t("build_logged", path=log_path))
+    except OSError:
+        pass
+
 def clean_up_and_retry(pkgname, attempts=2):
     """Retries the install without deleting the build directory.
 
@@ -137,6 +200,9 @@ def clean_up_and_retry(pkgname, attempts=2):
         try:
             install_aur_only(pkgname, clean_build=True)
             return True
+        except PkgbuildReviewDeclined:
+            print(t("pkgbuild_review_aborted", pkg=pkgname))
+            return False
         except subprocess.CalledProcessError:
             if attempt == attempts:
                 print(t("retry_failed_final", attempts=attempts, pkg=pkgname))
@@ -145,9 +211,11 @@ def clean_up_and_retry(pkgname, attempts=2):
     return False
 
 def install_aur_only(pkgname, clean_build=False):
-    """Performs only the AUR clone and makepkg. Raises if it fails."""
+    """Performs only the AUR clone and makepkg. Raises if it fails, or if
+    the user declines to build a PKGBUILD that changed since last time."""
 
     repo_url = f"https://aur.archlinux.org/{pkgname}.git"
+    pkgbuild_path = os.path.join(pkgname, "PKGBUILD")
 
     if not os.path.exists(pkgname):
         print(t("clone_start", url=repo_url))
@@ -155,7 +223,17 @@ def install_aur_only(pkgname, clean_build=False):
         print(t("clone_done"))
     else:
         print(t("dir_exists_updating", pkg=pkgname))
+        old_pkgbuild = ""
+        if os.path.exists(pkgbuild_path):
+            with open(pkgbuild_path, "r", errors="replace") as f:
+                old_pkgbuild = f.read()
         subprocess.run(["git", "pull"], cwd=pkgname, check=True, stdout=subprocess.DEVNULL)
+        new_pkgbuild = ""
+        if os.path.exists(pkgbuild_path):
+            with open(pkgbuild_path, "r", errors="replace") as f:
+                new_pkgbuild = f.read()
+        if not _pkgbuild_diff_confirmed(pkgname, old_pkgbuild, new_pkgbuild):
+            raise PkgbuildReviewDeclined(pkgname)
 
     # Only run the patches that apply to this package (universal patch system).
     apply_patches(pkgname, pkgname)
@@ -166,6 +244,7 @@ def install_aur_only(pkgname, clean_build=False):
         makepkg_cmd.append("--cleanbuild")
     subprocess.run(makepkg_cmd, cwd=pkgname, check=True)
     print(t("build_success", pkg=pkgname))
+    _log_build_checksums(pkgname, pkgname)
 
 # --- System cleanup function ---
 
@@ -234,7 +313,8 @@ def install_package(pkgname):
     except subprocess.CalledProcessError:
         print(t("sync_failed"))
 
-    # Priority 1: Pacman
+    # Priority 1: Pacman (pacman itself verifies package signatures via its
+    # own SigLevel config -- nothing extra to do here).
     if search_pacman_repos(pkgname):
         print(t("pacman_found_installing", pkg=pkgname))
         try:
@@ -257,6 +337,8 @@ def install_package(pkgname):
     # First AUR install attempt
     try:
         install_aur_only(pkgname)
+    except PkgbuildReviewDeclined:
+        print(t("pkgbuild_review_aborted", pkg=pkgname))
     except subprocess.CalledProcessError:
         clean_up_and_retry(pkgname)
 

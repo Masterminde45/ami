@@ -54,4 +54,9 @@ STRINGS = {
     "missing_pkgname": "FEIL: Mangler pakkenavn. Bruk: ami install <pakkenavn>",
     "patch_yay_conflict": "Fjern yay/yay-debug-konflikt",
     "patch_rustdesk_conflict": "Løs geocode-glib-common sammenslåingskonflikt",
+    "pkgbuild_changed_header": "\nPKGBUILD for '{pkg}' har endret seg siden forrige bygg -- se gjennom før du fortsetter:",
+    "pkgbuild_changed_prompt": "Bygge denne oppdaterte PKGBUILD-en? [y/N] ",
+    "pkgbuild_changed_auto_confirmed": "PKGBUILD for '{pkg}' endret seg -- auto-bekreftet (AMI_AUTO_CONFIRM_PKGBUILD_CHANGES=1).",
+    "pkgbuild_review_aborted": "Avbrutt: '{pkg}' ble ikke bygget fordi PKGBUILD-endringen ikke ble bekreftet.",
+    "build_logged": "Bygg registrert i {path}",
 }

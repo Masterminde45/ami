@@ -55,4 +55,9 @@ STRINGS = {
     "missing_pkgname": "ERROR: missing package name. Usage: ami install <package name>",
     "patch_yay_conflict": "Remove yay/yay-debug conflict",
     "patch_rustdesk_conflict": "Resolve geocode-glib-common merge conflict",
+    "pkgbuild_changed_header": "\nThe PKGBUILD for '{pkg}' has changed since your last build -- review before continuing:",
+    "pkgbuild_changed_prompt": "Build this updated PKGBUILD? [y/N] ",
+    "pkgbuild_changed_auto_confirmed": "PKGBUILD for '{pkg}' changed -- auto-confirmed (AMI_AUTO_CONFIRM_PKGBUILD_CHANGES=1).",
+    "pkgbuild_review_aborted": "Aborted: '{pkg}' was not built because the PKGBUILD change wasn't confirmed.",
+    "build_logged": "Build recorded in {path}",
 }
